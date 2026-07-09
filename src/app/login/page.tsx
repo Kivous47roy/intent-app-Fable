@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Icon } from '@/components/icons';
@@ -8,8 +8,9 @@ import { track } from '@/lib/analytics';
 
 // Email + password auth (same account model as the Wishlist app): sign up
 // once, then log in with the same credentials from any device to reach your
-// entries. "Forgot password" falls back to a magic link — which also lets
-// magic-link-era accounts get in and set a password from Profile.
+// entries. "Forgot password" emails a recovery link that lands on
+// /reset-password — which also lets magic-link-era accounts (no password yet)
+// set their first password.
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>('login');
@@ -19,6 +20,12 @@ export default function LoginPage() {
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('error') === 'link') {
+      setError('That link did not work — it may have expired or already been used. Request a new one below.');
+    }
+  }, []);
 
   const switchMode = (m: 'login' | 'signup' | 'forgot') => {
     setMode(m);
@@ -66,15 +73,14 @@ export default function LoginPage() {
         return;
       }
     } else {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
       });
       if (error) {
         setError(error.message);
       } else {
         setSent(true);
-        track('magic_link_sent');
+        track('password_reset_sent');
       }
     }
     setBusy(false);
@@ -193,12 +199,12 @@ export default function LoginPage() {
               ── FORGOT PASSWORD
             </div>
             <h1 className="display" style={{ fontSize: 36, lineHeight: 1.1, margin: 0, fontWeight: 300 }}>
-              A magic link,
+              Set a new
               <br />
-              <em style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontWeight: 400 }}>no password.</em>
+              <em style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontWeight: 400 }}>password.</em>
             </h1>
             <p style={{ marginTop: 20, fontSize: 15, lineHeight: 1.5, color: 'var(--ink-2)', maxWidth: 300 }}>
-              We&rsquo;ll email you a one-tap sign-in link. Once you&rsquo;re in, you can set a new password from Profile.
+              We&rsquo;ll email you a link. Open it and choose a new password — your entries stay right where they are.
             </p>
             <div style={{ marginTop: 28, paddingBottom: 8, borderBottom: '1px solid var(--ink)' }}>
               <input
@@ -241,7 +247,7 @@ export default function LoginPage() {
               <em style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontWeight: 400 }}>{email.trim()}</em>
             </h1>
             <p style={{ marginTop: 24, fontSize: 15, lineHeight: 1.5, color: 'var(--ink-2)', maxWidth: 300 }}>
-              Open it on this device to sign in.
+              Open it on this device to choose a new password.
             </p>
             <button
               onClick={() => setSent(false)}
@@ -281,7 +287,7 @@ export default function LoginPage() {
                   ? 'Log in'
                   : mode === 'signup'
                     ? 'Create account'
-                    : 'Send magic link'}
+                    : 'Email me a reset link'}
             </span>
             <Icon.Arrow size={18} />
           </button>
