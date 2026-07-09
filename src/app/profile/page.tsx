@@ -19,8 +19,19 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stats, setStats] = useState<{ entries: number; words: number } | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [accountEmail, setAccountEmail] = useState<string | null>(null);
+  const [showAccountForm, setShowAccountForm] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountMsg, setAccountMsg] = useState<string | null>(null);
+  const [accountErr, setAccountErr] = useState<string | null>(null);
 
   useEffect(() => {
+    createClient()
+      .auth.getUser()
+      .then(({ data }) => setAccountEmail(data.user?.email ?? null))
+      .catch(() => setAccountEmail(null));
     getProfile()
       .then((p) => {
         if (!p) router.replace('/onboarding');
@@ -87,6 +98,40 @@ export default function ProfilePage() {
       URL.revokeObjectURL(url);
     } finally {
       setExporting(false);
+    }
+  };
+
+  // Attach or update credentials on the current account. Accounts without an
+  // email (magic-link era or the old anonymous "Begin" path) set both email and
+  // password here — entries stay on the same account, which then works from
+  // any device via the login page.
+  const saveAccount = async () => {
+    if (accountBusy) return;
+    if (!accountEmail && !newEmail.trim()) {
+      setAccountErr('Enter an email address.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setAccountErr('Password must be at least 6 characters.');
+      return;
+    }
+    setAccountBusy(true);
+    setAccountErr(null);
+    setAccountMsg(null);
+    const { error } = await createClient().auth.updateUser(
+      accountEmail ? { password: newPassword } : { email: newEmail.trim(), password: newPassword }
+    );
+    setAccountBusy(false);
+    if (error) {
+      setAccountErr(error.message);
+    } else {
+      setAccountMsg(
+        accountEmail
+          ? 'Password saved. Use it with your email to log in anywhere.'
+          : 'Check your inbox to confirm your email — then log in anywhere with it.'
+      );
+      setNewPassword('');
+      setShowAccountForm(false);
     }
   };
 
@@ -167,6 +212,93 @@ export default function ProfilePage() {
               </div>
             </div>
           ))}
+        </div>
+
+        <div className="mono" style={{ fontSize: 10, color: 'var(--ink-3)', letterSpacing: '0.12em', marginBottom: 8 }}>
+          ── ACCOUNT
+        </div>
+        <div style={{ border: '1px solid var(--line-strong)', borderRadius: 4, overflow: 'hidden', background: 'rgba(255,255,255,0.4)', marginBottom: 22 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
+            <div style={{ fontSize: 14, color: 'var(--ink-2)' }}>Email</div>
+            <div className="serif" style={{ fontSize: 14, fontWeight: 500, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {accountEmail ?? 'Not set — this device only'}
+            </div>
+          </div>
+
+          {!showAccountForm ? (
+            <button
+              onClick={() => {
+                setShowAccountForm(true);
+                setAccountMsg(null);
+                setAccountErr(null);
+              }}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', width: '100%', textAlign: 'left' }}
+            >
+              <div style={{ fontSize: 14, color: 'var(--ink-2)' }}>
+                {accountEmail ? 'Set / change password' : 'Add email & password'}
+              </div>
+              <div className="mono" style={{ fontSize: 12, color: 'var(--ink-3)' }}>→</div>
+            </button>
+          ) : (
+            <div style={{ padding: '14px 16px' }}>
+              {!accountEmail && (
+                <div style={{ paddingBottom: 8, borderBottom: '1px solid var(--ink)', marginBottom: 14 }}>
+                  <input
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                    className="serif"
+                    style={{ fontSize: 16, fontWeight: 400, padding: 0 }}
+                  />
+                </div>
+              )}
+              <div style={{ paddingBottom: 8, borderBottom: '1px solid var(--ink)' }}>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && saveAccount()}
+                  placeholder="New password (min 6 characters)"
+                  autoComplete="new-password"
+                  className="serif"
+                  style={{ fontSize: 16, fontWeight: 400, padding: 0 }}
+                />
+              </div>
+              {accountErr && (
+                <div className="mono" style={{ fontSize: 11, color: 'var(--accent)', marginTop: 10 }}>
+                  {accountErr}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 18, marginTop: 14 }}>
+                <button
+                  onClick={saveAccount}
+                  disabled={accountBusy}
+                  className="mono"
+                  style={{ fontSize: 11, letterSpacing: '0.12em', color: 'var(--ink)', textDecoration: 'underline', textUnderlineOffset: 3 }}
+                >
+                  {accountBusy ? 'SAVING…' : 'SAVE'}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAccountForm(false);
+                    setAccountErr(null);
+                  }}
+                  className="mono"
+                  style={{ fontSize: 11, letterSpacing: '0.12em', color: 'var(--ink-3)' }}
+                >
+                  CANCEL
+                </button>
+              </div>
+            </div>
+          )}
+
+          {accountMsg && (
+            <div className="mono" style={{ fontSize: 11, color: 'var(--ink-2)', padding: '0 16px 14px', lineHeight: 1.6 }}>
+              {accountMsg}
+            </div>
+          )}
         </div>
 
         <div className="mono" style={{ fontSize: 10, color: 'var(--ink-3)', letterSpacing: '0.12em', marginBottom: 8 }}>
